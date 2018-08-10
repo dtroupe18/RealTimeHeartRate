@@ -11,10 +11,11 @@ import HealthKit
 
 class ViewController: UITableViewController {
     
-    var heartRateData = [Double]()
+    var heartRateData = [HeartRate]()
     let healthStore = HKHealthStore()
-    var heartRateQuery: HKObserverQuery?
     var queryTimer: Timer?
+    var lastHeartRateTime: Date?
+    
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -23,6 +24,7 @@ class ViewController: UITableViewController {
     
     func requestPermission() {
         print("request permission fired")
+        // iPad does not have access to HK so we won't be able to do this on an iPad... so sad
         let heartrate = HKQuantityType.quantityType(forIdentifier:HKQuantityTypeIdentifier.heartRate)
         let typesToRead: Set<HKObjectType> = [HKObjectType.workoutType(), heartrate!]
         HKHealthStore().requestAuthorization(toShare: nil, read: typesToRead, completion: { (success, error) in
@@ -32,86 +34,62 @@ class ViewController: UITableViewController {
     }
 
     // MARK: - Table view data source
-
     override func numberOfSections(in tableView: UITableView) -> Int {
-        // #warning Incomplete implementation, return the number of sections
         return 1
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        // #warning Incomplete implementation, return the number of rows
         return 1 + heartRateData.count
     }
 
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = UITableViewCell()
-        cell.textLabel?.text = "press me to start listening"
+        if indexPath.row == 0 {
+            cell.textLabel?.text = "press me to start listening"
+        } else {
+            cell.textLabel?.text = "HeartRate: \(heartRateData[indexPath.row - 1].bpm)"
+        }
         return cell
     }
     
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if indexPath.row == 0 {
-            print("starting to listen")
-            setUpBackgroundDeliveryForDataTypes()
+            startLookingForHeartRate()
         }
     }
     
     private func startLookingForHeartRate() {
-        // queryTimer = Timer.scheduledTimer(timeInterval: 5, target: self, selector: self.fe, userInfo: <#T##Any?#>, repeats: <#T##Bool#>)
+        queryTimer = Timer.scheduledTimer(timeInterval: 5, target: self, selector: #selector(self.getLatestHeartRate), userInfo: nil, repeats: true)
     }
     
-    private func listenForHeartRateUpdates() {
-        guard let sampleType = HKObjectType.quantityType(forIdentifier: HKQuantityTypeIdentifier.heartRate) else { print("shits nil"); return }
-
-        let query = HKObserverQuery(sampleType: sampleType, predicate: nil, updateHandler: { (observeQuery, completion, error) in
-            if error != nil {
-                // Perform Proper Error Handling Here...
-                print("*** An error occured while setting up the stepCount observer. \(error!.localizedDescription) ***")
-                abort()
-            }
-
-            // Take whatever steps are necessary to update your app's data and UI
-            // This may involve executing other queries
-            print("query: \(observeQuery)")
-            self.healthStore.execute(observeQuery)
+    @objc func getLatestHeartRate() {
+        print("get latest fired!")
+        fetchLatestHeartRateSample(completion: { [weak self] sample in
+            guard let sample = sample else { return }
             
-
-            // If you have subscribed for background updates you must call the completion handler here.
-            // completionHandler()
-
-        })
-        healthStore.execute(query)
-
-    }
-    
-    private func setUpBackgroundDeliveryForDataTypes() {
-        guard let sampleType = HKObjectType.quantityType(forIdentifier: HKQuantityTypeIdentifier.heartRate) else { print("shits nil"); return }
-        
-        let query = HKObserverQuery(sampleType: sampleType, predicate: nil, updateHandler: { [weak self] query, completion, error in
-            guard let strongSelf = self else { return }
-            
-            if error != nil {
-                print("Error: \(error!.localizedDescription)")
-            }
-            strongSelf.queryForUpdates(sampleType)
-            completion()
-        })
-        healthStore.execute(query)
-        healthStore.enableBackgroundDelivery(for: sampleType, frequency: .immediate, withCompletion: { success, err in
-            if err != nil {
-                print("background error: \(err!.localizedDescription)")
+            /// The completion is called on a background thread
+            DispatchQueue.main.async {
+                guard let sself = self else { return }
+                let heartRate = HeartRate(sample: sample)
+                
+                // Check that we are still getting new data
+                if sself.lastHeartRateTime == nil {
+                    sself.lastHeartRateTime = heartRate.time
+                    sself.heartRateData.append(heartRate)
+                    sself.tableView.reloadData()
+                } else if sself.lastHeartRateTime != nil && sself.lastHeartRateTime! != heartRate.time {
+                    print("still getting new data \(heartRate.time)")
+                    sself.lastHeartRateTime = heartRate.time
+                    sself.heartRateData.append(heartRate)
+                    sself.tableView.reloadData()
+                } else {
+                    // QWE: update this to alert the user to start a workout if the first two sample are the same
+                    //
+                    print("no longer getting new updates \(heartRate.time)")
+                }
             }
         })
-    }
-    
-    private func queryForUpdates(_ type: HKObjectType) {
-        print("37")
-        if type == HKObjectType.quantityType(forIdentifier: HKQuantityTypeIdentifier.heartRate) {
-            fetchLatestHeartRateSample(completion: { sample in
-                print("sample: \(sample)")
-            })
-        }
     }
     
     public func fetchLatestHeartRateSample(completion: @escaping (_ sample: HKQuantitySample?) -> Void) {
@@ -147,5 +125,4 @@ class ViewController: UITableViewController {
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
     }
-
 }
