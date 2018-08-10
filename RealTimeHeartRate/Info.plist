@@ -24,6 +24,10 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>To access heart rate data</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>To update heart rate data</string>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>armv7</string>
